@@ -1,83 +1,131 @@
-import { useState } from 'react'
-import { PRESET_VIDEOS } from "../video-list.generated.js";
+import { useState, useRef } from 'react'
+import { saveVideo, deleteVideo } from '../utils/db'
 
-// 预设主题色
 const PRESET_COLORS = ['#f0c040', '#60d0f0', '#f08060', '#80e0a0', '#e080d0', '#ffffff']
 
-/**
- * 设置面板组件
- * Props:
- *   settings  - 当前设置对象（来自 App 的 state）
- *   onChange  - 保存时的回调，接收新 settings 对象
- *   onClose   - 关闭面板的回调
- */
-export default function SettingsPanel({ settings, onChange, onClose }) {
-  // 用本地 state 暂存修改，点击 Save 才提交给父组件
-  // 确保当前选择的视频在可用列表中
-  const [local, setLocal] = useState(() => {
-    const videoExists = PRESET_VIDEOS.some(
-      (v) => v.value === settings.videoFile,
-    );
-    return {
-      ...settings,
-      videoFile: videoExists ? settings.videoFile : PRESET_VIDEOS[0].value,
-    };
-  });
+export default function SettingsPanel({ settings, uploadedVideo, onChange, onUploadedChange, onClose }) {
+  const [local, setLocal] = useState({ ...settings })
+  const [uploading, setUploading] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const fileRef = useRef(null)
 
-  // 通用字段更新函数
   const update = (key, value) =>
-    setLocal((prev) => ({ ...prev, [key]: value }));
+    setLocal((prev) => ({ ...prev, [key]: value }))
 
-  // 点击 Save：把本地修改提交给父组件，然后关闭面板
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      await saveVideo(file)
+      await onUploadedChange()
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleRemove = async () => {
+    await deleteVideo()
+    await onUploadedChange()
+  }
+
   const handleSave = () => {
-    onChange(local);
-    onClose();
-  };
+    onChange(local)
+    onClose()
+  }
 
-  // 点击遮罩背景关闭面板
   const handleBackdropClick = (e) => {
-    if (e.target === e.currentTarget) onClose();
-  };
+    if (e.target === e.currentTarget) onClose()
+  }
+
+  const handleDragOver = (e) => {
+    e.preventDefault()
+  }
+
+  const handleDragEnter = (e) => {
+    e.preventDefault()
+    setDragging(true)
+  }
+
+  const handleDragLeave = (e) => {
+    e.preventDefault()
+    setDragging(false)
+  }
+
+  const handleDrop = async (e) => {
+    e.preventDefault()
+    setDragging(false)
+    const file = e.dataTransfer.files?.[0]
+    if (!file || !file.type.startsWith('video/')) return
+    setUploading(true)
+    try {
+      await saveVideo(file)
+      await onUploadedChange()
+    } finally {
+      setUploading(false)
+    }
+  }
 
   return (
     <div className="settings-backdrop" onClick={handleBackdropClick}>
       <div className="settings-panel">
-        {/* 标题栏 */}
         <div className="settings-header">
           <h2>Settings</h2>
-          <button className="settings-close" onClick={onClose}>
-            ✕
-          </button>
+          <button className="settings-close" onClick={onClose}>✕</button>
         </div>
 
         <div className="settings-body">
-          {/* ── 视频选择 ── */}
           <section className="settings-section">
             <label className="settings-label">Background Video</label>
-            <select
-              className="settings-select"
-              value={local.videoFile}
-              onChange={(e) => update("videoFile", e.target.value)}
-            >
-              {PRESET_VIDEOS.map((v) => (
-                <option key={v.value} value={v.value}>
-                  {v.label}
-                </option>
-              ))}
-            </select>
-            {/* 提示用户如何添加自定义视频 */}
-            <p className="settings-hint">
-              Place your <code>.mp4</code>, <code>.webm</code>, or{" "}
-              <code>.ogg</code> file in the <code>videos/</code> folder, and it
-              will be automatically detected.
-            </p>
+
+            {uploadedVideo ? (
+              <div className="uploaded-info">
+                <span className="uploaded-name">{uploadedVideo.name}</span>
+                <div className="uploaded-actions">
+                  <button
+                    className="btn-upload"
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    Change
+                  </button>
+                  <button className="btn-remove" onClick={handleRemove}>
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div
+                className={`upload-zone${dragging ? ' drag-over' : ''}`}
+                onClick={() => fileRef.current?.click()}
+                onDragOver={handleDragOver}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                {uploading ? (
+                  <span>Uploading…</span>
+                ) : (
+                  <>
+                    <span className="upload-icon">📁</span>
+                    <span>{dragging ? 'Drop it!' : 'Click or drag a video here'}</span>
+                    <span className="upload-hint">.mp4, .webm, or .ogg</span>
+                  </>
+                )}
+              </div>
+            )}
+
+            <input
+              ref={fileRef}
+              type="file"
+              accept="video/mp4,video/webm,video/ogg"
+              style={{ display: 'none' }}
+              onChange={handleFile}
+            />
           </section>
 
-          {/* ── 遮罩透明度滑块 ── */}
           <section className="settings-section">
             <label className="settings-label">
-              Overlay Opacity —{" "}
-              <strong>{Math.round(local.overlayOpacity * 100)}%</strong>
+              Overlay Opacity — <strong>{Math.round(local.overlayOpacity * 100)}%</strong>
             </label>
             <input
               type="range"
@@ -86,9 +134,7 @@ export default function SettingsPanel({ settings, onChange, onClose }) {
               max="0.85"
               step="0.05"
               value={local.overlayOpacity}
-              onChange={(e) =>
-                update("overlayOpacity", parseFloat(e.target.value))
-              }
+              onChange={(e) => update('overlayOpacity', parseFloat(e.target.value))}
             />
             <div className="settings-slider-labels">
               <span>Clear</span>
@@ -96,41 +142,33 @@ export default function SettingsPanel({ settings, onChange, onClose }) {
             </div>
           </section>
 
-          {/* ── 主题色选择 ── */}
           <section className="settings-section">
             <label className="settings-label">Accent Color</label>
             <div className="color-presets">
-              {/* 预设色块 */}
               {PRESET_COLORS.map((c) => (
                 <button
                   key={c}
-                  className={`color-dot ${local.accentColor === c ? "active" : ""}`}
+                  className={`color-dot ${local.accentColor === c ? 'active' : ''}`}
                   style={{ background: c }}
-                  onClick={() => update("accentColor", c)}
+                  onClick={() => update('accentColor', c)}
                 />
               ))}
-              {/* 自定义颜色选择器 */}
               <input
                 type="color"
                 className="color-picker"
                 value={local.accentColor}
-                onChange={(e) => update("accentColor", e.target.value)}
+                onChange={(e) => update('accentColor', e.target.value)}
                 title="Custom color"
               />
             </div>
           </section>
         </div>
 
-        {/* 底部操作按钮 */}
         <div className="settings-footer">
-          <button className="btn-cancel" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn-save" onClick={handleSave}>
-            Save
-          </button>
+          <button className="btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="btn-save" onClick={handleSave}>Save</button>
         </div>
       </div>
     </div>
-  );
+  )
 }
