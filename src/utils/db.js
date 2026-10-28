@@ -14,11 +14,12 @@ function openDB() {
 }
 
 export async function saveVideo(file) {
-  const data = await file.arrayBuffer()
+  // 直接存 File/Blob：IndexedDB 原生支持，避免先 arrayBuffer() 把大文件
+  // 整个读进主线程内存（大视频上传/保存时会明显卡顿）
   const db = await openDB()
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite')
-    tx.objectStore(STORE_NAME).put({ name: file.name, data, type: file.type }, KEY)
+    tx.objectStore(STORE_NAME).put({ name: file.name, type: file.type, blob: file }, KEY)
     tx.oncomplete = () => resolve()
     tx.onerror = () => reject(tx.error)
   })
@@ -32,7 +33,8 @@ export async function loadVideo() {
     request.onsuccess = () => {
       const result = request.result
       if (!result) return resolve(null)
-      const blob = new Blob([result.data], { type: result.type })
+      // 新格式直接拿 Blob 句柄（不复制进内存）；兼容旧版本存的 { data: ArrayBuffer }
+      const blob = result.blob || new Blob([result.data], { type: result.type })
       resolve({ name: result.name, blob })
     }
     request.onerror = () => resolve(null)

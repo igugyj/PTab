@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import VideoBackground from './components/VideoBackground'
 import Clock from './components/Clock'
-import Greeting from './components/Greeting'
 import SettingsPanel from './components/SettingsPanel'
 import { loadVideo } from './utils/db'
 import './App.css'
 
 const DEFAULT_SETTINGS = {
+  showClock: true,
+  clockPos: 'mc', // 九宫格位置：tl/tc/tr/ml/mc/mr/bl/bc/br
   overlayOpacity: 0.35,
   accentColor: '#f0c040',
 }
@@ -39,7 +40,11 @@ export default function App() {
     refreshUploaded()
   }, [refreshUploaded])
 
-  const videoUrl = uploadedVideo ? URL.createObjectURL(uploadedVideo.blob) : null
+  // 记忆化对象 URL：只在视频本体变化时重建，避免每次渲染都换 src 导致视频重载卡顿
+  const videoUrl = useMemo(
+    () => (uploadedVideo ? URL.createObjectURL(uploadedVideo.blob) : null),
+    [uploadedVideo],
+  )
 
   useEffect(() => {
     return () => {
@@ -52,15 +57,17 @@ export default function App() {
   }
 
   return (
-    <div className="app" style={{ '--accent': settings.accentColor }}>
+    <div
+      className={`app${videoUrl ? '' : ' no-video'}`}
+      style={{ '--accent': settings.accentColor }}
+    >
       <VideoBackground
         src={videoUrl}
         overlayOpacity={settings.overlayOpacity}
       />
 
-      <div className="content">
-        <Clock />
-        <Greeting />
+      <div className={`content pos-${settings.clockPos}`}>
+        {settings.showClock && <Clock />}
       </div>
 
       <button

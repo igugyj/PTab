@@ -3,14 +3,32 @@ import { saveVideo, deleteVideo } from '../utils/db'
 
 const PRESET_COLORS = ['#f0c040', '#60d0f0', '#f08060', '#80e0a0', '#e080d0', '#ffffff']
 
+// 时钟位置九宫格（3x3），顺序即渲染顺序
+const CLOCK_POSITIONS = ['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br']
+const POSITION_LABELS = {
+  tl: 'Top left',
+  tc: 'Top center',
+  tr: 'Top right',
+  ml: 'Middle left',
+  mc: 'Center',
+  mr: 'Middle right',
+  bl: 'Bottom left',
+  bc: 'Bottom center',
+  br: 'Bottom right',
+}
+
 export default function SettingsPanel({ settings, uploadedVideo, onChange, onUploadedChange, onClose }) {
   const [local, setLocal] = useState({ ...settings })
   const [uploading, setUploading] = useState(false)
   const [dragging, setDragging] = useState(false)
   const fileRef = useRef(null)
+  const dragCounter = useRef(0) // 记录拖拽进入层级，避免子元素触发 dragleave 误判
 
   const update = (key, value) =>
     setLocal((prev) => ({ ...prev, [key]: value }))
+
+  const isFileDrag = (e) =>
+    Array.from(e.dataTransfer?.types || []).includes('Files')
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0]
@@ -38,22 +56,28 @@ export default function SettingsPanel({ settings, uploadedVideo, onChange, onUpl
     if (e.target === e.currentTarget) onClose()
   }
 
-  const handleDragOver = (e) => {
-    e.preventDefault()
-  }
-
+  // 拖拽事件挂在全屏遮罩上：整页都是判定区域，配合计数器抵消子元素的 enter/leave
   const handleDragEnter = (e) => {
     e.preventDefault()
+    if (!isFileDrag(e)) return
+    dragCounter.current += 1
     setDragging(true)
   }
 
   const handleDragLeave = (e) => {
     e.preventDefault()
-    setDragging(false)
+    if (dragCounter.current === 0) return
+    dragCounter.current -= 1
+    if (dragCounter.current === 0) setDragging(false)
+  }
+
+  const handleDragOver = (e) => {
+    if (isFileDrag(e)) e.preventDefault()
   }
 
   const handleDrop = async (e) => {
     e.preventDefault()
+    dragCounter.current = 0
     setDragging(false)
     const file = e.dataTransfer.files?.[0]
     if (!file || !file.type.startsWith('video/')) return
@@ -67,7 +91,14 @@ export default function SettingsPanel({ settings, uploadedVideo, onChange, onUpl
   }
 
   return (
-    <div className="settings-backdrop" onClick={handleBackdropClick}>
+    <div
+      className="settings-backdrop"
+      onClick={handleBackdropClick}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
       <div className="settings-panel">
         <div className="settings-header">
           <h2>Settings</h2>
@@ -97,10 +128,6 @@ export default function SettingsPanel({ settings, uploadedVideo, onChange, onUpl
               <div
                 className={`upload-zone${dragging ? ' drag-over' : ''}`}
                 onClick={() => fileRef.current?.click()}
-                onDragOver={handleDragOver}
-                onDragEnter={handleDragEnter}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
               >
                 {uploading ? (
                   <span>Uploading…</span>
@@ -121,6 +148,39 @@ export default function SettingsPanel({ settings, uploadedVideo, onChange, onUpl
               style={{ display: 'none' }}
               onChange={handleFile}
             />
+          </section>
+
+          <section className="settings-section">
+            <label className="settings-label">Display</label>
+            <div className="settings-toggle-row">
+              <span className="settings-toggle-text">Clock and date</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={local.showClock}
+                className={`settings-toggle${local.showClock ? ' on' : ''}`}
+                onClick={() => update('showClock', !local.showClock)}
+              >
+                <span className="settings-toggle-knob" />
+              </button>
+            </div>
+          </section>
+
+          <section className="settings-section">
+            <label className="settings-label">Clock Position</label>
+            <div className="pos-grid">
+              {CLOCK_POSITIONS.map((pos) => (
+                <button
+                  key={pos}
+                  type="button"
+                  className={`pos-cell pos-${pos}${local.clockPos === pos ? ' active' : ''}`}
+                  onClick={() => update('clockPos', pos)}
+                  title={POSITION_LABELS[pos]}
+                  aria-label={POSITION_LABELS[pos]}
+                  aria-pressed={local.clockPos === pos}
+                />
+              ))}
+            </div>
           </section>
 
           <section className="settings-section">

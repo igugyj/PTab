@@ -19,16 +19,17 @@
 ## 功能
 
 - **全屏视频背景** — 通过设置面板上传本地视频，完全离线，无需联网
-- **实时时钟** — 大字 HH:MM + 秒数高亮，每秒更新
-- **智能问候语** — 根据时段（清晨 / 上午 / 下午 / 傍晚 / 深夜）随机显示
-- **个性化设置** — 上传视频、调整遮罩深度、自定义主题色
+- **实时时钟** — 大字 HH:MM + 秒数高亮，每秒更新，可在设置中整体开关
+- **个性化设置** — 上传视频、开关时钟与日期、九宫格自定义时钟位置、调整遮罩深度、自定义主题色
 - **轻量无依赖** — 数据存 localStorage + IndexedDB，不联网，无追踪
 
 ---
 
 ## 预览
 
-![预览截图](assets/image.png)
+![alt text](assets/image.png)
+
+![alt text](assets/image-1.png)
 
 ---
 
@@ -44,13 +45,13 @@ PTab/
 │   ├── components/
 │   │   ├── VideoBackground.jsx  # 全屏视频 + 遮罩
 │   │   ├── Clock.jsx            # 实时时钟
-│   │   ├── Greeting.jsx         # 按时段问候语
-│   │   └── SettingsPanel.jsx    # 设置面板（含上传）
+│   │   └── SettingsPanel.jsx    # 设置面板（含上传、时钟开关）
 │   ├── utils/
 │   │   └── db.js                # IndexedDB 存储
 │   ├── App.jsx                  # 根组件 / 状态管理
 │   ├── App.css                  # 全局样式
 │   └── main.jsx                 # 入口文件
+├── .github/workflows/release.yml # Release 自动构建发布
 ├── vite.config.js               # Vite 配置
 └── index.html
 ```
@@ -82,65 +83,29 @@ npm run dev
 ```bash
 # Chrome / Edge
 npm run build:chrome
-# 产物输出到 dist/
+# 产物输出到 output/chrome/
 
 # Firefox
 npm run build:firefox
-# 产物输出到 dist-firefox/
+# 产物输出到 output/firefox/
 ```
 
 ### 4. 加载到浏览器
 
 **Chrome / Edge:**
+
 1. 打开 `chrome://extensions/`（或 `edge://extensions/`）
 2. 右上角开启 **开发者模式**
 3. 点击 **加载已解压的扩展程序**
-4. 选择 `dist/` 文件夹
+4. 选择 `output/chrome/` 文件夹
 
 **Firefox（临时加载，开发用）:**
+
 1. 打开 `about:debugging#/runtime/this-firefox`
 2. 点击 **加载临时附加组件**
-3. 选择 `dist-firefox/manifest.json`
+3. 选择 `output/firefox/manifest.json`
 
-> 临时加载在 Firefox 重启后会失效。要永久安装，需对扩展签名（见下方 Firefox 签名指南）。
-
----
-
-## Firefox 签名指南
-
-未签名的扩展无法在 Firefox 中永久安装，需要提交到 AMO (addons.mozilla.org) 签名。
-
-### 1. 获取 Add-on ID
-
-`gecko.id` 是 Firefox 扩展的唯一标识符，格式为 `名称@域名`。
-
-- 如果你有自己的域名：`ptab@你的域名.com`
-- 如果没有：使用你的邮箱 `ptab@你的邮箱.com`
-- 或者在 AMO 创建扩展后，使用 AMO 分配的 ID
-
-目前 manifest 中的默认值为 `ptab@example.com`，**上架前请修改为你自己的 ID**。
-
-修改位置：`public/manifest.json` → `browser_specific_settings.gecko.id`
-
-### 2. 获取 API 凭证
-
-1. 访问 [addons.mozilla.org](https://addons.mozilla.org/) 注册/登录
-2. 进入 [开发者中心 → API 密钥](https://addons.mozilla.org/developers/addon/api/key/)
-3. 生成 API Key（JWT issuer）和 API Secret（JWT secret）
-
-### 3. 安装 web-ext 并签名
-
-```bash
-npm install -D web-ext
-
-$env:WEB_EXT_API_KEY="user:12345678"     # 替换为你的 API Key
-$env:WEB_EXT_API_SECRET="your-secret"     # 替换为你的 API Secret
-npx web-ext sign --source-dir dist-firefox
-```
-
-签名成功后会在当前目录生成 `.xpi` 文件，双击即可永久安装到 Firefox。
-
-> 也可将扩展直接上传到 [AMO 开发者中心](https://addons.mozilla.org/developers/) 手动签名后再下载 `.xpi`。
+> 临时加载在 Firefox 重启后会失效。
 
 ---
 
@@ -152,13 +117,23 @@ npx web-ext sign --source-dir dist-firefox
 
 已上传的视频可通过 [Change] 替换或 [Remove] 移除。
 
-### 修改问候语
+### 显示开关
 
-编辑 `src/components/Greeting.jsx` 里的 `GREETINGS` 对象，按时段替换成你想要的文案。
+设置面板中的 **Clock and date** 开关控制时钟与日期行的整体显示 / 隐藏，保存后立即生效。
+
+### 时钟位置
+
+设置面板中的 **Clock Position** 九宫格控制时钟与日期的显示位置：点左上角即显示在左上角，共九档（四角、四边中点、居中），保存后立即生效。
 
 ### 修改字体
 
 `App.css` 顶部换掉 Google Fonts 链接，然后全局替换 `Playfair Display` 和 `Noto Serif SC` 即可。
+
+---
+
+## 自动发布（GitHub Actions）
+
+推送 `v*` 标签（须与 `public/manifest.json` 的 `version` 一致，例如 `v0.0.2`）后，`.github/workflows/release.yml` 会自动执行 lint、构建 Chrome 与 Firefox 版本并创建 GitHub Release，附带 `ptab-chrome.zip` 与 `ptab-firefox.zip`。也可在 Actions 页面手动触发该工作流（仅构建并上传产物，不创建 Release）。
 
 ---
 

@@ -45,7 +45,8 @@ build/** linguist-vendored
 *.jpeg binary
 *.gif binary
 *.ico binary
-*.svg text  # SVG 虽然是图片，但本质是文本，可以保留为 text
+*.svg text
+# SVG 虽然是图片，但本质是文本，可以保留为 text
 *.woff binary
 *.woff2 binary
 *.ttf binary
@@ -60,3 +61,6 @@ build/** linguist-vendored
 *.json text eol=lf
 *.yml text eol=lf
 *.md text eol=lf
+
+# 将 .jsx 文件明确识别为 React
+*.jsx linguist-language=React

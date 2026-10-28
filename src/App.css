@@ -22,8 +22,9 @@
 html, body, #root {
   width: 100%;
   height: 100%;
-  overflow: hidden;        /* 新标签页不需要滚动条 */
-  background: #0a0a14;     /* 视频加载前的占位色 */
+  overflow: hidden;         /* 新标签页不需要滚动条 */
+  color-scheme: light dark; /* 跟随浏览器（Firefox）当前亮/暗主题 */
+  background: Canvas;       /* 系统色：与浏览器主题的内容底色一致 */
 }
 
 /* ══════════════════════════════════════════════
@@ -52,11 +53,21 @@ html, body, #root {
   object-fit: cover; /* 视频裁剪填满，不留黑边 */
 }
 
-/* 视频加载失败时的兜底渐变背景 */
+/* 视频加载失败时的兜底渐变背景（保持深色，配合白色文字） */
 .video-fallback {
   width: 100%;
   height: 100%;
   background: linear-gradient(135deg, #0a0a2e 0%, #1a1a3e 50%, #0d1b2a 100%);
+}
+
+/* 未上传视频时：兜底背景改用系统色，与浏览器当前主题色一致 */
+.app.no-video .video-fallback {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, Canvas, CanvasText 5%) 0%,
+    Canvas 55%,
+    color-mix(in srgb, Canvas, CanvasText 10%) 100%
+  );
 }
 
 /* 遮罩层：透明度由 overlayOpacity prop 控制 */
@@ -75,8 +86,51 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center; /* 时钟 + 问候语居中 */
+  justify-content: center; /* 时钟居中（pos-mc 默认） */
   gap: 1.4rem;
+  padding: clamp(1.2rem, 4vw, 3rem); /* 角落定位时不贴边 */
+}
+
+/* ── 九宫格位置：.content（显示位置）与 .pos-cell（选择器里的小横条）共用同一套对齐 ──
+   两者都是 column 方向的 flex：justify-content = 垂直，align-items = 水平 */
+
+.content.pos-tl, .pos-cell.pos-tl { justify-content: flex-start; align-items: flex-start; }
+.content.pos-tc, .pos-cell.pos-tc { justify-content: flex-start; align-items: center; }
+.content.pos-tr, .pos-cell.pos-tr { justify-content: flex-start; align-items: flex-end; }
+.content.pos-ml, .pos-cell.pos-ml { justify-content: center;        align-items: flex-start; }
+.content.pos-mc, .pos-cell.pos-mc { justify-content: center;        align-items: center; }
+.content.pos-mr, .pos-cell.pos-mr { justify-content: center;        align-items: flex-end; }
+.content.pos-bl, .pos-cell.pos-bl { justify-content: flex-end;      align-items: flex-start; }
+.content.pos-bc, .pos-cell.pos-bc { justify-content: flex-end;      align-items: center; }
+.content.pos-br, .pos-cell.pos-br { justify-content: flex-end;      align-items: flex-end; }
+
+/* 日期行与大字边缘对齐：左侧位置左对齐，右侧位置右对齐 */
+.content.pos-tl .clock,
+.content.pos-ml .clock,
+.content.pos-bl .clock { text-align: left; }
+.content.pos-tr .clock,
+.content.pos-mr .clock,
+.content.pos-br .clock { text-align: right; }
+
+/* ── 未上传视频（主题色背景）时的文字与按钮配色 ──
+   背景变为浏览器主题色后，白色文字不可读，改用系统前景色 */
+
+.app.no-video {
+  --text: CanvasText;
+  --text-dim: color-mix(in srgb, CanvasText 60%, transparent);
+}
+.app.no-video .clock-hm {
+  color: CanvasText;
+  text-shadow: none;
+}
+.app.no-video .settings-btn {
+  background: color-mix(in srgb, CanvasText 10%, transparent);
+  border-color: color-mix(in srgb, CanvasText 25%, transparent);
+  color: color-mix(in srgb, CanvasText 65%, transparent);
+}
+.app.no-video .settings-btn:hover {
+  background: color-mix(in srgb, CanvasText 18%, transparent);
+  color: CanvasText;
 }
 
 /* ══════════════════════════════════════════════
@@ -130,18 +184,6 @@ html, body, #root {
 }
 
 /* ══════════════════════════════════════════════
-   问候语
-   ══════════════════════════════════════════════ */
-
-.greeting {
-  font-size: clamp(0.85rem, 1.6vw, 1.1rem);
-  color: rgba(255, 255, 255, 0.65);
-  letter-spacing: 0.1em;
-  font-weight: 300;
-  font-style: italic;
-}
-
-/* ══════════════════════════════════════════════
    设置按钮（右下角）
    ══════════════════════════════════════════════ */
 
@@ -190,15 +232,29 @@ html, body, #root {
   to   { opacity: 1; }
 }
 
-/* 面板主体 */
+/* 面板主体
+   限高：内容超出时只有中间 .settings-body 滚动，标题栏与底部按钮固定可见
+   配色：背景用 Canvas 系统色跟随浏览器主题的主背景色，内部色阶由 CanvasText 派生 */
 .settings-panel {
   width: min(400px, 92vw);
-  background: rgba(14, 14, 24, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  max-height: min(640px, 86vh);
+  display: flex;
+  flex-direction: column;
+  background: Canvas;
+  color: CanvasText;
+  border: 1px solid color-mix(in srgb, CanvasText 12%, transparent);
   border-radius: 20px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
   overflow: hidden;
   animation: slideUp 0.2s ease;
+
+  /* 面板内部语义色阶：全部由主题前景色派生，明/暗主题下都可读 */
+  --sp-line: color-mix(in srgb, CanvasText 8%, transparent);  /* 分隔线 */
+  --sp-fill: color-mix(in srgb, CanvasText 6%, transparent);  /* 卡片底色 */
+  --sp-edge: color-mix(in srgb, CanvasText 12%, transparent); /* 卡片描边 */
+  --sp-soft: color-mix(in srgb, CanvasText 80%, transparent); /* 正文 */
+  --sp-dim: color-mix(in srgb, CanvasText 55%, transparent);  /* 次要文字 */
+  --sp-faint: color-mix(in srgb, CanvasText 35%, transparent); /* 弱化元素 */
 }
 
 @keyframes slideUp {
@@ -212,7 +268,8 @@ html, body, #root {
   align-items: center;
   justify-content: space-between;
   padding: 1.2rem 1.6rem 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  border-bottom: 1px solid var(--sp-line);
+  flex-shrink: 0; /* 标题栏不随内容滚动 */
 }
 
 .settings-header h2 {
@@ -224,19 +281,39 @@ html, body, #root {
 .settings-close {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.35);
+  color: var(--sp-faint);
   font-size: 1rem;
   cursor: pointer;
   transition: color 0.15s;
 }
-.settings-close:hover { color: #fff; }
+.settings-close:hover { color: CanvasText; }
 
-/* 面板内容区 */
+/* 面板内容区：flex:1 + min-height:0 使其在限高内可滚动，超出才出现滚动条 */
 .settings-body {
   padding: 1.2rem 1.6rem;
   display: flex;
   flex-direction: column;
   gap: 1.4rem;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain; /* 滚到底不把滚动传给页面 */
+
+  /* 细滚动条：Firefox 用标准属性，Chromium 用 WebKit 伪元素 */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, CanvasText 25%, transparent) transparent;
+}
+.settings-body::-webkit-scrollbar { width: 8px; }
+.settings-body::-webkit-scrollbar-track { background: transparent; }
+.settings-body::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, CanvasText 22%, transparent);
+  border-radius: 4px;
+  border: 2px solid transparent; /* 滑块两侧留白，露出面板底色 */
+  background-clip: padding-box;
+}
+.settings-body::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, CanvasText 40%, transparent);
+  background-clip: padding-box;
 }
 
 /* 单个设置项 */
@@ -251,60 +328,86 @@ html, body, #root {
   font-size: 0.75rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--sp-dim);
 }
 
-/* 下拉菜单 */
-.settings-select {
-  padding: 0.6rem 1rem;
-  padding-right: 2.5rem;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+/* 开关行：左侧文字 + 右侧开关 */
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.9rem;
+  background: var(--sp-fill);
+  border: 1px solid var(--sp-edge);
   border-radius: 12px;
-  color: #fff;
-  font-family: 'Noto Serif SC', serif;
+}
+.settings-toggle-text {
   font-size: 0.87rem;
-  outline: none;
+  color: var(--sp-soft);
+}
+.settings-toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border: none;
+  border-radius: 11px;
+  background: color-mix(in srgb, CanvasText 22%, transparent);
   cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='rgba(255,255,255,0.5)' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 1rem center;
-  background-size: 12px;
-  transition: all 0.2s ease;
-  backdrop-filter: blur(10px);
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.settings-toggle.on {
+  background: var(--accent); /* 开启状态跟随主题色 */
+}
+.settings-toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: Canvas; /* 滑块用面板底色，明暗主题下都与开关对比清晰 */
+  transition: transform 0.2s;
+}
+.settings-toggle.on .settings-toggle-knob {
+  transform: translateX(18px);
 }
 
-.settings-select:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
+/* 时钟位置九宫格选择器 */
+.pos-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.4rem;
 }
-
-.settings-select:focus {
-  background: rgba(255, 255, 255, 0.12);
+.pos-cell {
+  display: flex;
+  flex-direction: column; /* 与 .content 同向，复用同一套对齐规则 */
+  height: 34px;
+  padding: 6px;
+  background: var(--sp-fill);
+  border: 1px solid var(--sp-edge);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+/* 小横条代表时钟，停在格子里的位置与实际显示位置一致 */
+.pos-cell::before {
+  content: '';
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--sp-faint);
+  transition: background 0.15s;
+}
+.pos-cell:hover {
+  border-color: color-mix(in srgb, CanvasText 30%, transparent);
+}
+.pos-cell.active {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(240, 192, 64, 0.15);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
-
-.settings-select option {
-  background: #1a1a2e;
-  color: #fff;
-  padding: 0.5rem;
-}
-
-/* 提示文字 */
-.settings-hint {
-  font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.3);
-  line-height: 1.6;
-}
-.settings-hint code {
-  background: rgba(255, 255, 255, 0.1);
-  padding: 0.1em 0.35em;
-  border-radius: 3px;
-  font-size: 0.9em;
+.pos-cell.active::before {
+  background: var(--accent);
 }
 
 /* 透明度滑块 */
@@ -318,7 +421,7 @@ html, body, #root {
   display: flex;
   justify-content: space-between;
   font-size: 0.68rem;
-  color: rgba(255, 255, 255, 0.25);
+  color: color-mix(in srgb, CanvasText 30%, transparent);
 }
 
 /* 颜色选择区 */
@@ -339,7 +442,7 @@ html, body, #root {
   transition: transform 0.15s, border-color 0.15s;
 }
 .color-dot:hover  { transform: scale(1.15); }
-.color-dot.active { border-color: #fff; transform: scale(1.15); } /* 选中态：白色外框 */
+.color-dot.active { border-color: CanvasText; transform: scale(1.15); } /* 选中态：主题前景色外框 */
 
 /* 自定义颜色输入框 */
 .color-picker {
@@ -358,7 +461,8 @@ html, body, #root {
   justify-content: flex-end;
   gap: 0.6rem;
   padding: 0.9rem 1.6rem 1.2rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
+  border-top: 1px solid var(--sp-line);
+  flex-shrink: 0; /* 底部按钮不随内容滚动 */
 }
 
 .btn-cancel,
@@ -372,8 +476,8 @@ html, body, #root {
   transition: opacity 0.15s, transform 0.1s;
 }
 .btn-cancel {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.55);
+  background: var(--sp-fill);
+  color: var(--sp-dim);
 }
 .btn-save {
   background: var(--accent); /* 保存按钮用主题色 */
@@ -394,7 +498,7 @@ html, body, #root {
   align-items: center;
   gap: 0.3rem;
   padding: 1.6rem 1rem;
-  border: 1px dashed rgba(255, 255, 255, 0.2);
+  border: 1px dashed color-mix(in srgb, CanvasText 25%, transparent);
   border-radius: 12px;
   cursor: pointer;
   transition: border-color 0.2s, background 0.2s;
@@ -402,17 +506,17 @@ html, body, #root {
 .upload-zone:hover,
 .upload-zone.drag-over {
   border-color: var(--accent);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--sp-fill);
 }
 .upload-zone.drag-over {
-  background: rgba(240, 192, 64, 0.08);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 .upload-icon {
   font-size: 1.6rem;
 }
 .upload-hint {
   font-size: 0.7rem;
-  color: rgba(255, 255, 255, 0.3);
+  color: var(--sp-faint);
 }
 
 .uploaded-info {
@@ -420,13 +524,13 @@ html, body, #root {
   align-items: center;
   justify-content: space-between;
   padding: 0.6rem 1rem;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: var(--sp-fill);
+  border: 1px solid var(--sp-edge);
   border-radius: 12px;
 }
 .uploaded-name {
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--sp-soft);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

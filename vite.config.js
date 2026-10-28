@@ -17,7 +17,7 @@ export default defineConfig(({ mode }) => {
         closeBundle() {
           const outDir = path.resolve(
             __dirname,
-            isFirefox ? "dist-firefox" : "dist",
+            isFirefox ? "output/firefox" : "output/chrome",
           );
           const manifestPath = path.resolve(outDir, "manifest.json");
           if (!fs.existsSync(manifestPath)) return;
@@ -46,7 +46,8 @@ export default defineConfig(({ mode }) => {
       },
     ],
     build: {
-      outDir: isFirefox ? "dist-firefox" : "dist",
+      outDir: isFirefox ? "output/firefox" : "output/chrome",
+      emptyOutDir: true,
     },
   };
 });

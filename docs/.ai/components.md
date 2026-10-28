@@ -18,22 +18,27 @@
 
 ### State
 
-| 状态         | 类型    | 默认值           | 说明                                               |
-| ------------ | ------- | ---------------- | -------------------------------------------------- |
-| settings     | Object  | DEFAULT_SETTINGS | 用户设置（videoFile, overlayOpacity, accentColor） |
-| showSettings | Boolean | false            | 设置面板显示状态                                   |
+| 状态          | 类型    | 默认值           | 说明                                       |
+| ------------- | ------- | ---------------- | ------------------------------------------ |
+| settings      | Object  | DEFAULT_SETTINGS | 用户设置（showClock, clockPos, overlayOpacity, accentColor） |
+| uploadedVideo | Object  | null             | IndexedDB 读出的已上传视频 {name, blob}，无则 null |
+| showSettings  | Boolean | false            | 设置面板显示状态                           |
 
 ### Imports
 
 ```javascript
-import { PRESET_VIDEOS } from "./video-list.generated.js";
+import VideoBackground from "./components/VideoBackground";
+import Clock from "./components/Clock";
+import SettingsPanel from "./components/SettingsPanel";
+import { loadVideo } from "./utils/db";
 ```
 
 ### DEFAULT_SETTINGS
 
 ```javascript
 const DEFAULT_SETTINGS = {
-  videoFile: PRESET_VIDEOS[0].value, // 使用扫描到的第一个视频
+  showClock: true,        // 时钟与日期整体显示开关
+  clockPos: "mc",         // 时钟九宫格位置（tl/tc/tr/ml/mc/mr/bl/bc/br）
   overlayOpacity: 0.35,
   accentColor: "#f0c040",
 };
@@ -41,10 +46,12 @@ const DEFAULT_SETTINGS = {
 
 ### 主要逻辑
 
-1. 初始化: 从 localStorage 读取设置，失败则用默认值
-2. 视频有效性检查: 检查保存的视频是否在可用列表中，不存在则回退到第一个
+1. 初始化: 从 localStorage 读取设置并与 DEFAULT_SETTINGS 合并，解析失败则用默认值
+2. 视频加载: 挂载时 loadVideo() 从 IndexedDB 读取，用 useMemo 生成对象 URL 交给 VideoBackground（只在视频本体变化时重建，普通重渲染不换 src），卸载时 revoke
 3. 自动保存: useEffect 监听 settings 变化，自动保存到 localStorage
 4. 主题注入: 通过 CSS 变量 --accent 传递主题色给子组件
+5. 时钟开关: settings.showClock 为 false 时不渲染 Clock（时间与日期同时隐藏）
+6. 时钟位置: settings.clockPos 决定 .content 的 pos-* 类，九宫格切换时钟与日期的显示位置（默认 mc 居中）
 
 ### 初始化 State 逻辑
 
@@ -52,20 +59,11 @@ const DEFAULT_SETTINGS = {
 const [settings, setSettings] = useState(() => {
   try {
     const saved = localStorage.getItem("newtab_settings");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      const videoExists = PRESET_VIDEOS.some(
-        (v) => v.value === parsed.videoFile,
-      );
-      if (!videoExists) {
-        parsed.videoFile = PRESET_VIDEOS[0].value;
-      }
-      return parsed;
-    }
-    return DEFAULT_SETTINGS;
+    if (saved) return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) };
   } catch {
-    return DEFAULT_SETTINGS;
+    // ignore
   }
+  return DEFAULT_SETTINGS;
 });
 ```
 
@@ -73,21 +71,23 @@ const [settings, setSettings] = useState(() => {
 
 ```jsx
 <div className="app" style={{ "--accent": settings.accentColor }}>
-  <VideoBackground
-    src={settings.videoFile}
-    overlayOpacity={settings.overlayOpacity}
-  />
-  <div className="content">
-    <Clock />
-    <Greeting />
+  <VideoBackground src={videoUrl} overlayOpacity={settings.overlayOpacity} />
+  <div className={`content pos-${settings.clockPos}`}>
+    {settings.showClock && <Clock />}
   </div>
-  <button className="settings-btn" onClick={() => setShowSettings(true)}>
-    ⚙
+  <button
+    className="settings-btn"
+    onClick={() => setShowSettings(true)}
+    title="Settings"
+  >
+    {/* 齿轮图标 */}
   </button>
   {showSettings && (
     <SettingsPanel
       settings={settings}
-      onChange={setSettings}
+      uploadedVideo={uploadedVideo}
+      onChange={handleChange}
+      onUploadedChange={refreshUploaded}
       onClose={() => setShowSettings(false)}
     />
   )}
@@ -106,7 +106,7 @@ const [settings, setSettings] = useState(() => {
 
 | Prop           | 类型   | 必填 | 说明             |
 | -------------- | ------ | ---- | ---------------- |
-| src            | String | 是   | 视频文件路径     |
+| src            | String 或 null | 否   | 视频对象 URL，null 时显示兜底背景 |
 | overlayOpacity | Number | 是   | 遮罩透明度 (0-1) |
 
 ### State
@@ -125,15 +125,17 @@ const [settings, setSettings] = useState(() => {
 
 1. src 变化时重新加载: useEffect 监听 src，调用 videoRef.current.load()
 2. 错误处理: onError 回调设置 hasError = true，显示兜底背景
-3. 双格式支持: 同时提供 MP4 和 WebM source，浏览器自动选择
+3. 错误重置: src 变化时在渲染阶段重置 prevSrc / hasError（React 官方的“props 变化时调整 state”模式），不要改回 effect 内同步 setState（会触发 react-hooks/set-state-in-effect 报错）
+4. 遮罩按需渲染: 仅在有视频 src 时渲染 .video-overlay；未上传视频时让兜底背景直接呈现浏览器主题色
 
 ### 渲染结构
 
 ```jsx
 <div className="video-wrapper">
-  {!hasError ? (
+  {src && !hasError ? (
     <video
       ref={videoRef}
+      className="video-bg"
       autoPlay
       muted
       loop
@@ -141,15 +143,16 @@ const [settings, setSettings] = useState(() => {
       onError={() => setHasError(true)}
     >
       <source src={src} type="video/mp4" />
-      <source src={src.replace(".mp4", ".webm")} type="video/webm" />
     </video>
   ) : (
     <div className="video-fallback" />
   )}
-  <div
-    className="video-overlay"
-    style={{ background: `rgba(0, 0, 0, ${overlayOpacity})` }}
-  />
+  {src && (
+    <div
+      className="video-overlay"
+      style={{ background: `rgba(0, 0, 0, ${overlayOpacity})` }}
+    />
+  )}
 </div>
 ```
 
@@ -159,7 +162,7 @@ const [settings, setSettings] = useState(() => {
 | --------------- | --------------------------- |
 | .video-wrapper  | 绝对定位全屏容器            |
 | .video-bg       | 视频元素，object-fit: cover |
-| .video-fallback | 渐变兜底背景                |
+| .video-fallback | 兜底背景：加载失败为深色渐变，未上传时为系统主题色 |
 | .video-overlay  | 黑色遮罩层                  |
 
 ---
@@ -168,7 +171,7 @@ const [settings, setSettings] = useState(() => {
 
 文件: src/components/Clock.jsx
 
-职责: 实时时钟显示
+职责: 实时时钟显示（App 根据 settings.showClock 决定是否渲染本组件，关闭时时间与日期一并隐藏、秒级定时器不启动）
 
 ### Props
 
@@ -241,76 +244,6 @@ pad(12); // "12"
 
 ---
 
-## Greeting 组件
-
-文件: src/components/Greeting.jsx
-
-职责: 根据时段显示随机问候语
-
-### Props
-
-无
-
-### State
-
-| 状态 | 类型   | 默认值 | 说明       |
-| ---- | ------ | ------ | ---------- |
-| text | String | ''     | 问候语文本 |
-
-### 常量
-
-#### GREETINGS
-
-按时段分组的问候语池
-
-```javascript
-const GREETINGS = {
-  night:     [...],
-  morning:   [...],
-  noon:      [...],
-  afternoon: [...],
-  evening:   [...],
-}
-```
-
-### 工具函数
-
-#### getPeriod(hour)
-
-根据小时判断时段
-
-参数: hour (Number) - 小时 (0-23)
-返回: String - 时段名称 ('night'|'morning'|'noon'|'afternoon'|'evening')
-
-时段映射:
-
-| 小时  | 返回        |
-| ----- | ----------- |
-| 0-4   | 'night'     |
-| 5-11  | 'morning'   |
-| 12-13 | 'noon'      |
-| 14-17 | 'afternoon' |
-| 18-23 | 'evening'   |
-
-### 主要逻辑
-
-1. 只在挂载时执行: useEffect 空依赖数组 []，确保只在组件首次渲染时选择问候语
-2. 随机选择: Math.floor(Math.random() \* pool.length) 从对应时段随机选取
-
-### 渲染结构
-
-```jsx
-<p className="greeting">{text}</p>
-```
-
-### CSS 类
-
-| 类名      | 说明                   |
-| --------- | ---------------------- |
-| .greeting | 斜体，浅色，字间距加宽 |
-
----
-
 ## SettingsPanel 组件
 
 文件: src/components/SettingsPanel.jsx
@@ -319,37 +252,36 @@ const GREETINGS = {
 
 ### Props
 
-| Prop     | 类型     | 必填 | 说明                               |
-| -------- | -------- | ---- | ---------------------------------- |
-| settings | Object   | 是   | 当前设置对象                       |
-| onChange | Function | 是   | 保存时的回调，接收新 settings 对象 |
-| onClose  | Function | 是   | 关闭面板的回调                     |
+| Prop             | 类型     | 必填 | 说明                               |
+| ---------------- | -------- | ---- | ---------------------------------- |
+| settings         | Object   | 是   | 当前设置对象                       |
+| uploadedVideo    | Object   | 否   | 已上传视频 {name, blob}，无则 null |
+| onChange         | Function | 是   | 保存时的回调，接收新 settings 对象 |
+| onUploadedChange | Function | 是   | 视频上传 / 删除后的刷新回调        |
+| onClose          | Function | 是   | 关闭面板的回调                     |
 
 ### State
 
-| 状态  | 类型   | 默认值                   | 说明                 |
-| ----- | ------ | ------------------------ | -------------------- |
-| local | Object | 包含视频有效性检查的对象 | 暂存修改的本地 state |
+| 状态      | 类型    | 默认值      | 说明                 |
+| --------- | ------- | ----------- | -------------------- |
+| local     | Object  | {...settings} | 暂存修改的本地 state |
+| uploading | Boolean | false       | 文件上传中状态       |
+| dragging  | Boolean | false       | 拖拽悬停状态         |
 
 ### 初始化 State 逻辑
 
 ```javascript
-const [local, setLocal] = useState(() => {
-  const videoExists = PRESET_VIDEOS.some((v) => v.value === settings.videoFile);
-  return {
-    ...settings,
-    videoFile: videoExists ? settings.videoFile : PRESET_VIDEOS[0].value,
-  };
-});
+const [local, setLocal] = useState({ ...settings });
 ```
 
 ### Imports
 
 ```javascript
-import { PRESET_VIDEOS } from "../video-list.generated.js";
+import { useState, useRef } from "react";
+import { saveVideo, deleteVideo } from "../utils/db";
 ```
 
-PRESET_VIDEOS 由 vite-plugin-videoscan.js 自动生成，扫描 public/videos/ 目录并写入 src/video-list.generated.js。
+视频通过 IndexedDB 持久化，见 src/utils/db.js。
 
 ### 常量
 
@@ -367,6 +299,16 @@ const PRESET_COLORS = [
   "#ffffff",
 ];
 ```
+
+#### CLOCK_POSITIONS
+
+时钟位置九宫格取值，顺序即 3x3 渲染顺序：
+
+```javascript
+const CLOCK_POSITIONS = ['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br']
+```
+
+配套 POSITION_LABELS 为每个位置提供 title / aria-label 文案。
 
 ### 方法
 
@@ -400,10 +342,33 @@ const update = (key, value) => setLocal((prev) => ({ ...prev, [key]: value }));
 
 逻辑: 仅当点击目标是遮罩本身时才关闭（避免点击面板内容时误关闭）
 
+#### handleFile(e)
+
+文件选择回调: 取第一个文件，saveVideo() 写入 IndexedDB，调用 onUploadedChange() 刷新父组件，期间 uploading 为 true
+
+#### handleDragEnter(e) / handleDragLeave(e) / handleDragOver(e)
+
+拖拽悬停处理，事件挂在全屏遮罩上（整个页面都是判定区域）：dragCounter 计数抵消子元素进出触发的 enter/leave，归零才撤销高亮；仅对 Files 类型拖拽生效
+
+#### handleDrop(e)
+
+拖拽放下回调: 校验 video/* 类型后执行与 handleFile 相同的保存流程，并重置计数与高亮
+
+#### handleRemove()
+
+删除回调: deleteVideo() 后调用 onUploadedChange() 刷新父组件
+
 ### 渲染结构
 
 ```jsx
-<div className="settings-backdrop" onClick={handleBackdropClick}>
+<div
+  className="settings-backdrop"
+  onClick={handleBackdropClick}
+  onDragEnter={handleDragEnter}
+  onDragLeave={handleDragLeave}
+  onDragOver={handleDragOver}
+  onDrop={handleDrop}
+>
   <div className="settings-panel">
     <div className="settings-header">
       <h2>Settings</h2>
@@ -412,24 +377,70 @@ const update = (key, value) => setLocal((prev) => ({ ...prev, [key]: value }));
       </button>
     </div>
     <div className="settings-body">
-      {/* 视频选择 */}
+      {/* 视频上传 */}
       <section className="settings-section">
         <label className="settings-label">Background Video</label>
-        <select
-          className="settings-select"
-          value={local.videoFile}
-          onChange={(e) => update("videoFile", e.target.value)}
-        >
-          {PRESET_VIDEOS.map((v) => (
-            <option key={v.value} value={v.value}>
-              {v.label}
-            </option>
+        {uploadedVideo ? (
+          <div className="uploaded-info">
+            <span className="uploaded-name">{uploadedVideo.name}</span>
+            <div className="uploaded-actions">
+              <button className="btn-upload" onClick={() => fileRef.current?.click()}>
+                Change
+              </button>
+              <button className="btn-remove" onClick={handleRemove}>
+                Remove
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div
+            className={`upload-zone${dragging ? " drag-over" : ""}`}
+            onClick={() => fileRef.current?.click()}
+          >
+            {uploading ? <span>Uploading…</span> : <span>Click or drag a video here</span>}
+          </div>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="video/mp4,video/webm,video/ogg"
+          hidden
+          onChange={handleFile}
+        />
+      </section>
+      {/* 时钟显示开关 */}
+      <section className="settings-section">
+        <label className="settings-label">Display</label>
+        <div className="settings-toggle-row">
+          <span className="settings-toggle-text">Clock and date</span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={local.showClock}
+            className={`settings-toggle${local.showClock ? " on" : ""}`}
+            onClick={() => update("showClock", !local.showClock)}
+          >
+            <span className="settings-toggle-knob" />
+          </button>
+        </div>
+      </section>
+
+      {/* 时钟位置九宫格 */}
+      <section className="settings-section">
+        <label className="settings-label">Clock Position</label>
+        <div className="pos-grid">
+          {CLOCK_POSITIONS.map((pos) => (
+            <button
+              key={pos}
+              type="button"
+              className={`pos-cell pos-${pos}${local.clockPos === pos ? " active" : ""}`}
+              onClick={() => update("clockPos", pos)}
+              title={POSITION_LABELS[pos]}
+              aria-label={POSITION_LABELS[pos]}
+              aria-pressed={local.clockPos === pos}
+            />
           ))}
-        </select>
-        <p className="settings-hint">
-          Place your .mp4, .webm, or .ogg file in the videos/ folder, and it
-          will be automatically detected.
-        </p>
+        </div>
       </section>
       {/* 遮罩透明度滑块 */}
       <section className="settings-section">
@@ -484,30 +495,22 @@ const update = (key, value) => setLocal((prev) => ({ ...prev, [key]: value }));
 | 类名               | 说明                                  |
 | ------------------ | ------------------------------------- |
 | .settings-backdrop | 全屏半透明遮罩，backdrop-filter: blur |
-| .settings-panel    | 面板主体，毛玻璃效果                  |
-| .settings-header   | 标题栏，flex 两端对齐                 |
-| .settings-body     | 内容区，flex 列布局                   |
+| .settings-panel    | 面板主体：限高 min(640px, 86vh)、flex 纵向布局，背景 Canvas/文字 CanvasText 跟随浏览器主题，--sp-* 语义色阶由 CanvasText 派生 |
+| .settings-header   | 标题栏，flex 两端对齐，flex-shrink: 0 固定不滚动 |
+| .settings-body     | 内容区，flex 列布局；flex:1 + min-height:0 + overflow-y:auto，超出限高时出现细滚动条（scrollbar-width: thin + ::-webkit-scrollbar），overscroll-behavior: contain |
 | .settings-section  | 单个设置项容器                        |
 | .settings-label    | 设置项标签，大写，小字号              |
-| .settings-select   | 下拉菜单（自定义样式，悬停/聚焦效果） |
-| .settings-hint     | 提示文字                              |
+| .settings-toggle-row | 开关行，左右两端对齐               |
+| .settings-toggle   | 显示开关按钮，开启时背景为 var(--accent) |
+| .settings-toggle-knob | 开关滑块                        |
+| .pos-grid        | 时钟位置九宫格容器（3x3）        |
+| .pos-cell        | 九宫格格子，小横条位置即显示位置，选中态为 var(--accent) |
 | .settings-slider   | 透明度滑块                            |
+| .upload-zone       | 视频上传区（点击 / 拖拽）              |
+| .uploaded-info     | 已上传视频信息条                      |
 | .color-presets     | 颜色选择区容器                        |
 | .color-dot         | 预设色块按钮                          |
 | .color-picker      | 自定义颜色输入框                      |
-| .settings-footer   | 底部按钮区                            |
+| .settings-footer   | 底部按钮区，flex-shrink: 0 固定不滚动   |
 | .btn-cancel        | 取消按钮                              |
 | .btn-save          | 保存按钮，使用 var(--accent)          |
-
-### .settings-select 详细样式说明
-
-下拉框样式特性：
-- appearance: none - 移除浏览器默认样式
-- 自定义 SVG 下拉箭头
-- padding: 0.6rem 1rem - 更大的内边距
-- border-radius: 12px - 圆角
-- backdrop-filter: blur(10px) - 毛玻璃效果
-- 悬停效果：背景变亮，边框加深
-- 聚焦效果：边框变为主题色，添加柔和光晕
-- transition: all 0.2s ease - 平滑动画
-- option 深色背景：#1a1a2e

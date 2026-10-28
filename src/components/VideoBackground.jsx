@@ -3,9 +3,15 @@ import { useRef, useEffect, useState } from 'react'
 export default function VideoBackground({ src, overlayOpacity }) {
   const videoRef = useRef(null)
   const [hasError, setHasError] = useState(false)
+  const [prevSrc, setPrevSrc] = useState(src)
+
+  // 切换视频时在渲染阶段重置错误状态（React 官方的“props 变化时调整 state”模式）
+  if (prevSrc !== src) {
+    setPrevSrc(src)
+    setHasError(false)
+  }
 
   useEffect(() => {
-    setHasError(false)
     if (videoRef.current) {
       videoRef.current.load()
     }
@@ -29,10 +35,13 @@ export default function VideoBackground({ src, overlayOpacity }) {
         <div className="video-fallback" />
       )}
 
-      <div
-        className="video-overlay"
-        style={{ background: `rgba(0, 0, 0, ${overlayOpacity})` }}
-      />
+      {/* 无视频时不盖遮罩，让兜底背景直接呈现浏览器主题色 */}
+      {src && (
+        <div
+          className="video-overlay"
+          style={{ background: `rgba(0, 0, 0, ${overlayOpacity})` }}
+        />
+      )}
     </div>
   )
 }

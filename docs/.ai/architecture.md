@@ -22,13 +22,13 @@ PTab 采用典型的 React 单页应用架构，以组件化方式构建。作�
 │                   构建工具层                               │
 │              (Vite + 自定义插件)                          │
 │  ┌───────────────────────────────────────────────────┐  │
-│  │  vite-plugin-videoscan.js (视频扫描插件)          │  │
+│  │  browser-manifest 插件 (注入 Firefox 字段)        │  │
 │  └───────────────────────────────────────────────────┘  │
 └─────────────────────────┬───────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────┐
 │                   数据持久化层                             │
-│                    (localStorage)                         │
+│                    (localStorage 设置 + IndexedDB 视频)   │
 └───────────────────────────────────────────────────────────┘
 ```
 
@@ -40,17 +40,17 @@ App (根组件)
 │   ├── <video> 或 <div.video-fallback>
 │   └── <div.video-overlay> (遮罩层)
 ├── Content (内容区，flex 居中)
-│   ├── Clock (时钟)
+│   └── Clock (时钟)
 │   │   ├── .clock-time
 │   │   │   ├── .clock-hm (HH:MM)
 │   │   │   └── .clock-sec (秒数)
 │   │   └── .clock-date (日期)
-│   └── Greeting (问候语)
 ├── SettingsButton (设置按钮，右下角)
 └── SettingsPanel (设置面板，条件渲染)
     ├── SettingsHeader (标题栏)
     ├── SettingsBody (内容区)
-    │   ├── Video Select (视频选择 - 自动扫描)
+    │   ├── Video Upload (视频上传 - 点击或拖拽)
+    │   ├── Clock Toggle (时钟与日期开关)
     │   ├── Opacity Slider (遮罩透明度)
     │   └── Color Picker (主题色)
     └── SettingsFooter (底部按钮)
@@ -92,34 +92,16 @@ App (根组件)
                    └──────────────┘
 ```
 
-### 视频扫描数据流
+### 视频上传数据流
 
 ```
-┌─────────────────────┐
-│  public/videos/     │
-│  目录文件变化       │
-└──────────┬──────────┘
-           │
-           ▼
-┌───────────────────────────────┐
-│  vite-plugin-videoscan.js     │
-│  - 扫描目录                   │
-│  - 生成 PRESET_VIDEOS 数组    │
-│  - 写入 video-list.generated.js│
-└──────────┬────────────────────┘
-           │
-           ▼
-┌───────────────────────────────┐
-│  src/video-list.generated.js  │
-│  export PRESET_VIDEOS         │
-└──────────┬────────────────────┘
-           │
-           ▼
-┌───────────────────────────────┐
-│  SettingsPanel.jsx            │
-│  import { PRESET_VIDEOS }     │
-│  from '../video-list.generated.js'│
-└───────────────────────────────┘
+SettingsPanel（点击 / 拖拽选择文件）
+    ↓ saveVideo(file)
+src/utils/db.js —— 写入 IndexedDB（库 ptab-videos，键 uploaded_video）
+    ↓ loadVideo()
+App.jsx —— uploadedVideo state → URL.createObjectURL(blob)
+    ↓ videoUrl prop
+VideoBackground —— <video> 播放对象 URL
 ```
 
 ## 状态管理
@@ -128,14 +110,17 @@ App (根组件)
 
 | 状态         | 类型    | 说明                                                        |
 | ------------ | ------- | ----------------------------------------------------------- |
-| settings     | Object  | 当前用户设置（包含 videoFile, overlayOpacity, accentColor） |
-| showSettings | Boolean | 设置面板显示/隐藏状态                                       |
+| settings      | Object  | 用户设置（showClock, clockPos, overlayOpacity, accentColor） |
+| uploadedVideo | Object  | IndexedDB 读出的已上传视频 {name, blob}，无则 null   |
+| showSettings  | Boolean | 设置面板显示/隐藏状态                                |
 
 ### SettingsPanel 本地状态
 
 | 状态  | 类型   | 说明                           |
 | ----- | ------ | ------------------------------ |
-| local | Object | 暂存用户修改，点击 Save 才提交 |
+| local     | Object  | 暂存用户修改，点击 Save 才提交 |
+| uploading | Boolean | 文件上传中状态                 |
+| dragging  | Boolean | 拖拽悬停状态                   |
 
 ## 关键设计模式
 
@@ -149,15 +134,16 @@ SettingsPanel 使用本地 state 暂存修改，避免实时更新导致的 UI �
 
 ### 3. 条件渲染
 
-SettingsPanel 仅在 showSettings === true 时渲染，优化性能。
+SettingsPanel 仅在 showSettings === true 时渲染；Clock 仅在 settings.showClock 为 true 时渲染（关闭时同时隐藏时间与日期并停止秒级刷新）。
 
 ### 4. Effect 自动保存
 
 useEffect(() => { localStorage.setItem(...) }, [settings]) 确保 settings 变化时自动持久化。
 
-### 5. Vite 插件生成文件
+### 5. 构建时注入 Firefox 清单
 
-使用 Vite 插件生成真实文件 src/video-list.generated.js，动态生成视频列表，无需手动维护，更稳定可靠。
+vite.config.js 中的 browser-manifest 插件在 closeBundle 阶段改写 output/firefox/manifest.json，
+注入 browser_specific_settings.gecko.id 与 chrome_settings_overrides.homepage。
 
 ## 层叠顺序 (z-index)
 
@@ -165,7 +151,7 @@ useEffect(() => { localStorage.setItem(...) }, [settings]) 确保 settings 变�
 | ---------------------- | ------- | ------------------ |
 | 设置面板遮罩           | 50      | .settings-backdrop |
 | 设置按钮               | 10      | .settings-btn      |
-| 内容区（时钟、问候语） | 1       | .content           |
+| 内容区（时钟）       | 1       | .content           |
 | 视频背景               | 0       | .video-wrapper     |
 
 ## 事件流
@@ -173,7 +159,7 @@ useEffect(() => { localStorage.setItem(...) }, [settings]) 确保 settings 变�
 ### 打开设置面板
 
 ```
-点击 ⚙ 按钮
+点击右下角设置按钮
     ↓
 setShowSettings(true)
     ↓
@@ -198,34 +184,20 @@ useEffect 触发 → 保存到 localStorage
 onClose() → setShowSettings(false)
 ```
 
-### 切换视频
+### 上传视频
 
 ```
-用户选择新视频
+用户点击上传区域或拖拽文件
     ↓
-update('videoFile', newValue)
+handleFile / handleDrop → saveVideo(file) 写入 IndexedDB
     ↓
-Save → App.state.settings.videoFile 更新
+onUploadedChange() → App.refreshUploaded() → loadVideo()
     ↓
-VideoBackground 组件检测到 src 变化
+setUploadedVideo → 生成新的 videoUrl
     ↓
-useEffect([src]) 触发 → videoRef.current.load()
+VideoBackground 收到新 src → effect 调用 videoRef.load()
     ↓
-视频重新加载
-```
-
-### 开发模式下添加新视频
-
-```
-将视频文件放入 public/videos/
-    ↓
-vite-plugin-videoscan.js 监听到变化
-    ↓
-发送 full-reload 信号
-    ↓
-页面自动刷新
-    ↓
-新视频出现在下拉菜单中
+新视频开始播放
 ```
 
 ## 性能优化点
@@ -234,32 +206,29 @@ vite-plugin-videoscan.js 监听到变化
 2. 空依赖 useEffect - Clock 定时器只在挂载时设置一次
 3. 本地暂存 - 避免频繁的父组件 state 更新
 4. CSS 动画 - 使用 CSS transform 和 opacity 实现 GPU 加速动画
-5. 构建时扫描 - 视频列表在构建时生成，运行时无额外开销
+5. 按需渲染时钟 - showClock 关闭时不挂载 Clock，无秒级定时器
 
 ## 扩展点
 
 ### 可扩展功能位置
 
-| 功能             | 文件位置                                        | 说明                 |
-| ---------------- | ----------------------------------------------- | -------------------- |
-| 添加新视频       | public/videos/ 目录 - 自动扫描                  | 直接放入视频文件即可 |
-| 修改问候语       | Greeting.jsx 的 GREETINGS                       | 按时段修改文案       |
-| 添加设置项       | App.jsx 的 DEFAULT_SETTINGS + SettingsPanel.jsx | 添加新字段和 UI      |
-| 修改主题色       | SettingsPanel.jsx 的 PRESET_COLORS              | 数组中追加颜色       |
-| 修改视频扫描逻辑 | vite-plugin-videoscan.js                        | 修改插件实现         |
+| 功能             | 文件位置                                        | 说明                     |
+| ---------------- | ----------------------------------------------- | ------------------------ |
+| 上传/替换视频    | SettingsPanel.jsx + utils/db.js                 | 经设置面板存入 IndexedDB |
+| 添加设置项       | App.jsx 的 DEFAULT_SETTINGS + SettingsPanel.jsx | 添加新字段和 UI          |
+| 修改主题色       | SettingsPanel.jsx 的 PRESET_COLORS              | 数组中追加颜色           |
+| 构建与发布       | vite.config.js、.github/workflows/release.yml   | 输出目录与 Release 流程  |
 
-## 构建工具配置
+## 构建配置
+
+### 构建输出
+
+- npm run build:chrome → output/chrome/（默认 mode）
+- npm run build:firefox → output/firefox/（--mode firefox）
 
 ### Vite 插件
 
-- vite-plugin-videoscan.js - 视频扫描插件
-  - 功能：扫描 public/videos/ 目录，生成 src/video-list.generated.js 文件
-  - 钩子：configResolved、configureServer
-  - 监听：开发模式下监听目录变化
-  - 输出：写入 PRESET_VIDEOS 数组到 src/video-list.generated.js
-
-### 生成文件
-
-- 生成文件：src/video-list.generated.js
-- 导出：PRESET_VIDEOS 数组
-- Git 忽略：已添加到 .gitignore
+- browser-manifest（vite.config.js 内联插件）
+  - 钩子：closeBundle
+  - Firefox 构建时改写 output/firefox/manifest.json，注入 gecko.id、strict_min_version、chrome_settings_overrides.homepage
+  - Chrome 构建不做任何修改
