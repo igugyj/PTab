@@ -33,6 +33,21 @@
 
 ---
 
+## 安装下载
+
+| 浏览器 | 下载 |
+| ------ | ---- |
+| Firefox | <https://addons.mozilla.org/addon/ptab> |
+| Edge | <!-- TODO: 补充 Edge 商店链接 --> 即将上架 |
+| Chrome | [GitHub Releases](https://github.com/igugyj/PTab/releases)（`ptab-chrome.zip`） |
+
+所有浏览器也可直接在 [GitHub Releases](https://github.com/igugyj/PTab/releases) 按版本下载：
+
+- `ptab-firefox.zip` — Firefox，解压后可在 `about:debugging` 临时加载，或提交 AMO 签名后安装
+- `ptab-chrome.zip` — Chrome / Edge，解压后在扩展页开启开发者模式并「加载已解压的扩展程序」
+
+---
+
 ## 项目结构
 
 ```

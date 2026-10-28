@@ -9,6 +9,10 @@
 - 开关滑块改为 Canvas 底色，选中色块外框改为 CanvasText，拖拽高亮背景改用 var(--accent) 派生
 - 删除结构错误的 output/firefox.zip（资源管理器右键压缩文件夹产生包裹目录，manifest 不在压缩包根导致临时加载报错；加载请直接选 output/firefox/manifest.json）
 
+### README 新增安装下载章节
+- 新增「安装下载」表格：Firefox 提供 addons.mozilla.org/addon/ptab 链接，Edge 留占位（上架后自行补充），Chrome 指向 GitHub Releases 的 ptab-chrome.zip
+- 附各浏览器 zip 的安装方式说明（Release 产物由 release.yml 自动打包）
+
 ## 2026-10-28
 
 ### 设置：时钟显示开关
