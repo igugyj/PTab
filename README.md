@@ -4,7 +4,7 @@
 
 **AI 开发文档**: [docs/.ai/index.md](docs/.ai/index.md)
 
->[!NOTE]
+> [!NOTE]
 > 本项目90%以上代码由AI生成
 
 ![Manifest](https://img.shields.io/badge/Manifest-V3-blue)
@@ -35,16 +35,18 @@
 
 ## 安装下载
 
-| 浏览器 | 下载 |
-| ------ | ---- |
-| Firefox | [addons.mozilla.org/addon/ptab](https://addons.mozilla.org/addon/ptab) |
-| Edge | <!-- TODO: 补充 Edge 商店链接 --> 即将上架 |
-| Chrome | [GitHub Releases](https://github.com/igugyj/PTab/releases)（`ptab-chrome.zip`） |
+| 浏览器  | 下载                                                                                                                          |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Firefox | [addons.mozilla.org/addon](https://addons.mozilla.org/addon/ptab)                                                             |
+| Edge    | [microsoftedge.microsoft.com/addons](https://microsoftedge.microsoft.com/addons/detail/ptab/gcmlkopabaocfhnngmiakamfccnclnmh) |
+| Chrome  | [GitHub Releases](https://github.com/igugyj/PTab/releases)（`ptab-chrome.zip`）                                               |
 
 所有浏览器也可直接在 [GitHub Releases](https://github.com/igugyj/PTab/releases) 按版本下载：
 
 - `ptab-firefox.zip` — Firefox，解压后可在 `about:debugging` 临时加载，或提交 AMO 签名后安装
 - `ptab-chrome.zip` — Chrome / Edge，解压后在扩展页开启开发者模式并「加载已解压的扩展程序」
+
+- 动态壁纸资源推荐：[MoeWalls](https://moewalls.com/) - 提供大量免费的高清动态视频壁纸（动漫/游戏/风景等），可用于寻找个人设备或新标签页的背景灵感。
 
 ---
 
