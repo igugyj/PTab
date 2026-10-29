@@ -37,7 +37,7 @@
 
 | 浏览器 | 下载 |
 | ------ | ---- |
-| Firefox | <https://addons.mozilla.org/addon/ptab> |
+| Firefox | [addons.mozilla.org/addon/ptab](https://addons.mozilla.org/addon/ptab) |
 | Edge | <!-- TODO: 补充 Edge 商店链接 --> 即将上架 |
 | Chrome | [GitHub Releases](https://github.com/igugyj/PTab/releases)（`ptab-chrome.zip`） |
 
